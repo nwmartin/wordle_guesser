@@ -3,6 +3,17 @@ class Wordle
   # All capital letters.
   CAPITALS = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z']
 
+  # Set this to debug a particular word.
+  DEBUG_WORD = nil
+
+  # Yay!
+  ALL_GREEN = 'GGGGG'
+
+  # Use this as a correction to try a different word if one is not in the dictionary.
+  SKIP_WORD = '-----'
+
+  # Total number of guesses allowed.
+  GUESSES = 6
 
   def initialize(dictionary)
     # This is our current dictionary.
@@ -20,6 +31,10 @@ class Wordle
     # {letter: index:}
     @correct_letters = []
 
+    # Words that we skipped during the session.
+    # These need to be manually removed from the dictionary.
+    @skipped_words = []
+
     @guess = 0
 
     puts "Initializing dictionary with #{@dictionary.count} words"
@@ -34,16 +49,32 @@ class Wordle
     @guess += 1
     if @dictionary.count == 0
       puts 'No words left in the dictionary!'
-      return false
+      return true
     end
     word_scores = score_words
     guess, correction = ask_user(word_scores)
     update_dictionary(guess, correction)
-    if correction == 'GGGGG'
-      puts 'Huzzah!'
-      return false
+    if correction == ALL_GREEN
+      victory
+      return true
     end
-    true
+    if correction == SKIP_WORD
+      @guess -= 1
+    end
+    if @guess >= GUESSES
+      return true
+    end
+    next_guess
+  end
+
+  def victory
+    puts 'Huzzah!'
+    if @skipped_words.count > 0
+      puts 'Some words were skipped:'
+      @skipped_words.each do |word|
+        puts word
+      end
+    end
   end
 
   # Creates a word strength score for the current dictionary.
@@ -63,6 +94,7 @@ class Wordle
     puts "Next guess (#{@guess}): #{guess}"
     puts 'Corrections: X = Not present, Y = Present, G = Exactly, ie XXYGX'
     correction = gets.chomp
+
     [guess, correction]
   end
 
@@ -118,8 +150,17 @@ class Wordle
 
   # Updates the dictionary given the last guess and the corrections for it.
   def update_dictionary(guess, correction)
-    update_known_letters(guess, correction)
-    filter_dictionary
+    unless correction == '-----'
+      update_known_letters(guess, correction)
+      filter_dictionary
+    else
+      remove_word_from_dictionary(guess)
+    end
+  end
+
+  def remove_word_from_dictionary(word)
+    @dictionary.delete(word)
+    @skipped_words << word
   end
 
   # Our shorthand for signaling corrections back from wordle.
@@ -152,6 +193,7 @@ class Wordle
   def none_wrong?(word)
     word.chars.each do |letter|
       if @wrong_letters.include?(letter)
+        debug_word(word, 'none_wrong?')
         return false
       end
     end
@@ -168,6 +210,7 @@ class Wordle
   def any_present?(word)
     @present_letters.each do |present|
       unless word.chars.include?(present[:letter])
+        debug_word(word, 'any_present?')
         return false
       end
     end
@@ -179,6 +222,7 @@ class Wordle
       # We actually don't care to keep anything that has the right letter
       # but it was marked as being in the wrong place.
       if word[present[:index]] == present[:letter]
+        debug_word(word, 'none_exactly?')
         return false
       end
     end
@@ -191,10 +235,17 @@ class Wordle
     all_correct = true
     @correct_letters.each do |correct|
       unless word[correct[:index]] == correct[:letter]
+        debug_word(word, 'all_correct?')
         all_correct = false
       end
     end
     all_correct
+  end
+
+  def debug_word(word, step)
+    if word == DEBUG_WORD
+      puts "filtered #{word} in step #{step}"
+    end
   end
 
   # Creates a dictionary from an arbitrary file.
@@ -216,14 +267,8 @@ class Wordle
 
 end
 
-GUESSES = 6
+
 
 # '/usr/share/dict/words'
 dictionary = '~/words_alpha.txt'
-worlde = Wordle.new(dictionary)
-
-[*1..GUESSES].each do |i|
-  unless worlde.next_guess()
-    break
-  end
-end
+worlde = Wordle.new(dictionary).next_guess()
